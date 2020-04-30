@@ -1,0 +1,301 @@
+---
+title: "16S rRNA Data Analysis Worflow for Paper: Rapamycin rejuvenates oral health in aging mice"
+author: "Kristopher Kerns"
+date: "9/15/2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+1. Load Required Packages 
+```{r library, message=FALSE, warning=FALSE}
+library(pacman)
+#pacman will automatically load and install packages. Results of failed install/load is summerize. Some Packages may mask others functions, so please be cognisent of this.
+p_load("dplyr","ggplot2","phyloseq","devtools", "gridExtra","plyr", 
+"ggrepel","tidyr", "knitr", "cowplot", "Hmisc", "ggpmisc", "ggtitle", "ggpubr",
+"emmeans","ggsignif","plotly","data.table","ggExtra","tidyverse")
+```
+
+2. Import data
+```{r biom, message=FALSE, warning=FALSE}
+#Importing .biom file that is an output from Qiime2
+jsonbiomfile = "/Users/kristopherkerns/Desktop/R_markdown_An/feature_table_w_taxonomy.biom" 
+#In Data Folder on Github Repository 
+myData=import_biom(jsonbiomfile)
+colnames(tax_table(myData)) = c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+rank_names(myData)
+```
+
+3. Load mapping file and convert to factors
+```{r meta, message=FALSE, warning=FALSE}
+#Import mapping file for phyloseq
+map=import_qiime_sample_data("/Users/kristopherkerns/Desktop/R_markdown_An/Metadata_An.txt") 
+#In Data Folder on Github Repository 
+
+#Convert these to factors: "Age_months" 
+map$Age_months <- as.factor(map$Age_months)
+
+```
+
+4.Import tree from Qiime2
+```{r tree, echo=TRUE, message=FALSE, warning=FALSE}
+RootedTree = "/Users/kristopherkerns/Desktop/R_markdown_An/tree.nwk" 
+#In Data Folder on Github Repository 
+tree <- read_tree(RootedTree)
+```
+
+5. Create the Complete Phyloseq Object
+```{r phyloseq object, message=FALSE, warning=FALSE}
+AN_All = merge_phyloseq(myData,map,tree)
+AN_All
+```
+
+6. Figure S3.
+```{r Figure S3, fig.keep='last', message=FALSE, warning=FALSE}
+#Independent Alpha Diversity Analysis for JAX and UW_NIA Animals; Do Not Use Prunned Data for Alpha Diversity Analysis
+#Phyloseq Object
+AN_All = merge_phyloseq(myData,map,tree)
+
+#JX(A)#
+AN_JX  <- subset_samples(AN_All, Site_Location == "JX")
+AN_JX_YOR  <- subset_samples(AN_JX, Group_Designation != "YR")
+
+#Comparisons to be Made
+my_comp_YOR <- list(c("Y","R"),c("Y","O"),c("O","R"))
+
+#Order Levels
+sample_data(AN_JX_YOR)$Group_Designation <- factor(sample_data(AN_JX_YOR)$Group_Designation, levels = c("Y","O","R"))
+
+#Alpha Diversity Stats
+sample_data(AN_JX_YOR)$shannon.physeq <- estimate_richness(AN_JX_YOR, measures="Shannon")
+sample_data(AN_JX_YOR)$chao1.physeq <- estimate_richness(AN_JX_YOR, measures="Chao1")
+sample_data(AN_JX_YOR)$observed.physeq <- estimate_richness(AN_JX_YOR, measures="Observed")
+sample_data(AN_JX_YOR)$fisher.physeq <- estimate_richness(AN_JX_YOR, measures="Fisher")
+
+#Plot Alpha Diversity
+pa1 <-plot_richness(AN_JX_YOR, "Group_Designation", title="Alpha Diversity Between Groups for JX Samples", nrow=1, measures = c("Observed", "Chao1", "Shannon","Fisher"))
+
+#remove jitters
+pa1$layers <- pa1$layers[-1]
+pa1$layers <- pa1$layers[-1]
+
+pa1 <- pa1 + geom_boxplot(outlier.color= "Black") +  ggtitle("Alpha Diversity Between Groups for JX Samples") + theme (plot.title = element_text(hjust=0.5, size=16)) + scale_colour_manual(values = c("black","grey","darkgrey")) #+ scale_fill_manual(values = c("blue","red"))
+pa1 <- pa1 + theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), legend.position = "bottom") +
+   stat_compare_means(comparisons = my_comp_YOR, method = "t.test", label = "p.signif", size = 3, show.legend = TRUE) + labs(caption = "T Test ns = p > 0.05, * = p <= 0.05,** = p <= 0.01,*** = p <= 0.001,**** = p <= 0.0001") + 
+  theme(plot.caption = element_text(hjust = 0.5))
+pa1
+
+#UW(B)#
+AN_UW  <- subset_samples(AN_All, Site_Location == "UW")
+AN_UW_YOR  <- subset_samples(AN_UW, Group_Designation != "YR")
+
+#Assign levels becuase I want Y first then O
+sample_data(AN_UW_YOR)$Group_Designation <- factor(sample_data(AN_UW_YOR)$Group_Designation, levels = c("Y","O","R"))
+
+#add alpha diversity columns for scatterplot
+sample_data(AN_UW_YOR)$shannon.physeq <- estimate_richness(AN_UW_YOR, measures="Shannon")
+sample_data(AN_UW_YOR)$chao1.physeq <- estimate_richness(AN_UW_YOR, measures="Chao1")
+sample_data(AN_UW_YOR)$observed.physeq <- estimate_richness(AN_UW_YOR, measures="Observed")
+sample_data(AN_UW_YOR)$fisher.physeq <- estimate_richness(AN_UW_YOR, measures="Fisher")
+
+pa2 <-plot_richness(AN_UW_YOR, "Group_Designation", title="Alpha Diversity Between Groups for UW Samples", nrow=1, measures = c("Observed", "Chao1", "Shannon","Fisher"))
+
+#remove jitters
+pa2$layers <- pa2$layers[-1]
+pa2$layers <- pa2$layers[-1]
+
+pa2 <- pa2 + geom_boxplot(outlier.color= "Black") +  ggtitle("Alpha Diversity Between Groups for UW Samples") + theme (plot.title = element_text(hjust=0.5, size=16)) + scale_colour_manual(values = c("black","grey","darkgrey")) + theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), legend.position = "bottom") + stat_compare_means(comparisons = my_comp_YOR, method = "t.test", label = "p.signif", size = 3, show.legend = TRUE) + labs(caption = "T Test ns = p > 0.05, * = p <= 0.05,** = p <= 0.01,*** = p <= 0.001,**** = p <= 0.0001") + 
+  theme(plot.caption = element_text(hjust = 0.5))
+pa2
+```
+
+7.Figure S4.
+```{r Figure S4, message=FALSE, warning=FALSE}
+#Independent Phylum Level Abundance Analusis for JAX and UW-NIA Animals
+#Transform Count Data to Relative Abundance 
+AN_All_n <- transform_sample_counts(AN_All, function(x) x / sum(x))
+
+#Filter
+AN_All_n_f<- prune_taxa(taxa_sums(AN_All_n) >0, AN_All_n)
+
+#Agglomerate Data at the Phylum Level
+AN_All_n_f_glom_phy  = tax_glom(AN_All_n_f, "Phylum", NArm = TRUE)
+
+#Convert to Dataframe
+AN_All_n_f_glom_phy_df <- psmelt(AN_All_n_f_glom_phy) 
+
+my_comparisons2 <- list(c("Y","R"),c("Y","O"),c("O","R"))
+
+#JX(A)#
+#Isolate JX samples 
+AN_JX_n_f_glom_phy_df <- filter(AN_All_n_f_glom_phy_df, Site_Location == "JX")
+AN_JX_n_f_glom_phy_df_YOR <- filter(AN_JX_n_f_glom_phy_df, Group_Designation != "YR")
+
+AN_JX_n_f_glom_phy_df_YOR$Group_Designation <- factor(AN_JX_n_f_glom_phy_df_YOR$Group_Designation, levels = c("Y","O","R"))
+
+p4 <- ggplot(subset(AN_JX_n_f_glom_phy_df_YOR, Phylum %in% c("p__Actinobacteria", "p__Bacteroidetes","p__Firmicutes","p__Fusobacteria", "p__Proteobacteria","p__Saccharibacteria_(TM7)")), aes(Group_Designation, Abundance)) +
+  geom_boxplot()+ geom_point(size = 1, alpha = 0.5) + facet_grid(~ Phylum) + 
+  theme(strip.text.x = element_text(size = 6, colour = "black", angle = 0)) + scale_y_log10()
+
+p4.1 <- p4 + stat_smooth(aes(color = Phylum, fill = Phylum), method = "lm", se = TRUE) +
+  stat_cor(aes(color = Phylum), label.y = NA) +
+  stat_poly_eq(aes(color = Treatment_Only, label = ..eq.label..), formula = formula, label.y = NA, parse = TRUE) + 
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = TRUE) +
+  labs(x = "Treatment Groups (-Rapamycin,+Rapamycin)", y = "Normalized Taxonomic Abundance (log10)" , title = "Phylum Level Abundance per Group Designation for JX Wilcox" , caption = "Wilcoxon Ran Sum: ns = p > 0.05, * = p <= 0.05,** = p <= 0.01,*** = p <= 0.001,**** = p <= 0.0001") +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), plot.title = element_text(face = "bold", hjust = 0.5), plot.caption = element_text(hjust = 0.5))
+p4.1
+
+#UW(B)#
+AN_UW_n_f_glom_phy_df <- subset.data.frame(AN_All_n_f_glom_phy_df, Site_Location == "UW")
+
+AN_UW_n_f_glom_phy_df$Group_Designation <- factor(AN_UW_n_f_glom_phy_df$Group_Designation, levels = c("Y","O","R"))
+
+p5 <- ggplot(AN_UW_n_f_glom_phy_df, aes(Group_Designation, Abundance)) +
+  geom_boxplot()+ geom_point(size = 1, alpha = 0.5) + facet_grid( ~ Phylum) + 
+  theme(strip.text.x = element_text(size = 6, colour = "black", angle = 0)) + scale_y_log10()
+
+p5.1 <- p5 + stat_smooth(aes(color = Phylum, fill = Phylum), method = "lm", se = TRUE) +
+  stat_cor(aes(color = Phylum), label.y = NA) +
+  stat_poly_eq(aes(color = Treatment_Only, label = ..eq.label..), formula = formula, label.y = NA, parse = TRUE) + 
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = TRUE) +
+  labs(x = "Treatment Groups (-Rapamycin,+Rapamycin)", y = "Normalized Taxonomic Abundance (log10)" , title = "Phylum Level Abundance per Rapamycin Treatment for Old JX Mice Wilcox" , caption = "Wilcoxon Ran Sum: ns = p > 0.05, * = p <= 0.05,** = p <= 0.01,*** = p <= 0.001,**** = p <= 0.0001") +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), plot.title = element_text(face = "bold", hjust = 0.5), plot.caption = element_text(hjust = 0.5))
+p5.1
+
+```
+
+8.Figure S5.
+```{r Figure S5, message=FALSE, warning=FALSE}
+#Independent Beta Diversity for JAX and UW-NIA animals by Principal Coordinate Analysis using Weighted Unifrac Distances.
+#Transform Count Data to Relative Abundance 
+AN_All_n <- transform_sample_counts(AN_All, function(x) x / sum(x))
+
+#Filter Phyla
+AN_All_n_f <- prune_taxa(taxa_sums(AN_All_n)>0, AN_All_n)
+
+my_comparisons2 <- list(c("Y","R"),c("Y","O"),c("O","R"))
+
+#JX(A)
+AN_All_n_f_JX <- AN_All_n_f
+sample_data(AN_All_n_f_JX) <- subset(sample_data(AN_All_n_f_JX), Site_Location == "JX")
+sample_data(AN_All_n_f_JX) <- subset(sample_data(AN_All_n_f_JX), Group_Designation != "YR")
+
+#Ordinate Data
+ord_JX_wf <- ordinate(AN_All_n_f_JX, "PCoA", "unifrac", weighted=TRUE)
+
+#Extract Sample Data and Convert to Dataframe
+SAM <- sample_data(AN_All)
+SAM_df <- as.data.frame(SAM)
+GD_JX <- subset.data.frame(SAM_df, select = c("Site_Location","Group_Designation"))
+GD_JX <- subset.data.frame(GD_JX, Site_Location == "JX")
+GD_JX <- subset.data.frame(GD_JX, Group_Designation != "YR")
+
+#Extract the Axis.1 and Axis.2 from the coordinate data.frame
+ord_vectors_JX <- ord_JX_wf$vectors
+ord_vect_JX <- subset.data.frame(ord_vectors_JX, select = c("Axis.1","Axis.2"))
+
+ord_gd_JX <- cbind(GD_JX,ord_vect_JX)
+
+p6 <- ggplot(ord_gd_JX, aes(Group_Designation, Axis.1,color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) +
+      stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = FALSE) +
+      theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), axis.title.x=element_blank(),legend.position = "none")          + labs(y = "Axis.1 [70.7%]")
+
+p6.1 <- ggplot(ord_gd_JX, aes(Group_Designation, Axis.2, color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) + 
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = TRUE) +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"),axis.title.x=element_blank(), legend.position = "none") +
+  labs(y = "Axis.2 [8.5%]")
+
+pwf6.2 = plot_ordination(AN_All_n_f_JX, ord_JX_wf, type="sample",color ="Group_Designation") + theme(legend.title = element_blank(), legend.position =      c(0.9,0.8)) + geom_point(size = 3) + theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), plot.title =               element_text(face = "bold", hjust = 0.5), plot.caption = element_text(hjust = 0.5), legend.title = element_blank()) + labs(title = "Weighted Unifrac PCoA  for JX Samples")
+
+lay <- rbind(c(1,1),
+             c(3,2))
+
+grid.arrange(pwf6.2,p6.1,p6, nrow =2, layout_matrix = lay, bottom = text_grob("O = Old (22 Months) R = Old (22 Months) +Rapamycin Y = Young (6 Months) \    ns = p > 0.05 * = p <= 0.05 ** = p <= 0.01 *** = p <= 0.001 **** = p <= 0.0001",hjust = 0.5, size = 6))
+
+#UW(A)
+AN_All_n_f_UW <- AN_All_n_f
+sample_data(AN_All_n_f_UW) <- subset(sample_data(AN_All_n_f_UW), Site_Location == "UW")
+sample_data(AN_All_n_f_UW) <- subset(sample_data(AN_All_n_f_UW), Group_Designation != "YR")
+
+#Ordinate Data
+ord_UW_wf <- ordinate(AN_All_n_f_UW, "PCoA", "unifrac", weighted=TRUE)
+
+#Extract Sample Data and Convert to Dataframe
+GD_UW <- subset.data.frame(SAM_df, select = c("Site_Location","Group_Designation"))
+GD_UW <- subset.data.frame(GD_UW, Site_Location == "UW")
+GD_UW <- subset.data.frame(GD_UW, Group_Designation != "YR")
+
+#Extract the Axis.1 and Axis.2 from the coordinate data.frame
+ord_vectors_UW <- ord_UW_wf$vectors
+ord_vect_UW <- subset.data.frame(ord_vectors_UW, select = c("Axis.1","Axis.2"))
+
+ord_gd_UW <- cbind(GD_UW,ord_vect_UW)
+
+p7 <- ggplot(ord_gd_UW, aes(Group_Designation, Axis.1,color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) +
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = FALSE) +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), axis.title.x=element_blank(),legend.position = "none") +
+  labs(y = "Axis.1 [77.2%]")
+
+p7.1 <- ggplot(ord_gd_UW, aes(Group_Designation, Axis.2, color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) + 
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = TRUE) +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"),axis.title.x=element_blank(), legend.position = "none") +
+  labs(y = "Axis.2 [6.9%]")
+
+pwf7.2 = plot_ordination(AN_All_n_f, ord_UW_wf, type="sample",color ="Group_Designation", title="Unifrac Weighted UW Only Filtered PCoA") + theme(legend.title = element_blank(), legend.position = "bottom") + geom_point(size = 3) + theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), plot.title = element_text(face = "bold", hjust = 0.5), plot.caption = element_text(hjust = 0.5), legend.title = element_blank())
+
+lay <- rbind(c(1,1),
+             c(3,2))
+
+grid.arrange(pwf7.2, p7.1, p7, ncol = 2, nrow = 2, layout_matrix = lay, bottom = text_grob("O = Old (22 Months) R = Old (22 Months) +Rapamycin Y = Young (6 Months)         ns = p > 0.05 * = p <= 0.05 ** = p <= 0.01 *** = p <= 0.001 **** = p <= 0.0001",hjust = 0.5, size = 6))
+```
+
+9.Figure 4
+```{r Figure 4, message=FALSE, warning=FALSE}
+#Rapamycin shifts aged oral microbiome towards young oral microbiome
+#boxplots for Alpha diversity and abundance comparisons were extracted from previous figures genereated in previous figures shown here.
+
+#Transform Count Data to Relative Abundance
+AN_All_n <- transform_sample_counts(AN_All, function(x) x / sum(x))
+
+#Filter Phyla
+AN_All_n_f <- prune_taxa( taxa_sums(AN_All_n)>0, AN_All_n)
+
+my_comparisons2 <- list(c("Y","R"),c("Y","O"),c("O","R"))
+
+#All(C)
+AN_All_n_f_ALL <- AN_All_n_f
+sample_data(AN_All_n_f_ALL) <- subset(sample_data(AN_All_n_f_ALL), Group_Designation != "YR")
+
+#Ordinate Data
+ord_All_wf <- ordinate(AN_All_n_f_ALL, "PCoA", "unifrac", weighted=TRUE)
+
+#Extract Sample Data and Convert to Dataframe
+SAM <- sample_data(AN_All)
+SAM_df <- as.data.frame(SAM)
+GD_All <- subset.data.frame(SAM_df, select = c("Site_Location","Group_Designation"))
+GD_All <- subset.data.frame(GD_All, Group_Designation != "YR")
+
+#now extract the Axis.1 and Axis.2 from the coordinate data.frame
+ord_vectors_All <- ord_All_wf$vectors
+ord_vect_All <- subset.data.frame(ord_vectors_All, select = c("Axis.1","Axis.2"))
+
+ord_gd_All <- cbind(GD_All,ord_vect_All)
+
+p8 <- ggplot(ord_gd_All, aes(Group_Designation, Axis.1,color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) +
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = FALSE) +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), axis.title.x=element_blank(),legend.position = "none") +
+  labs(y = "Axis.1 [69.8%]")
+
+p8.1 <- ggplot(ord_gd_All, aes(Group_Designation, Axis.2, color = Group_Designation)) + geom_boxplot() + geom_point(size = 1, alpha = 0.5) + 
+  stat_compare_means(comparisons = my_comparisons2, method = "wilcox.test", label = "p.signif", size = 2, show.legend = TRUE) +
+  theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"),axis.title.x=element_blank(), legend.position = "none") +
+  labs(y = "Axis.2 [8.5%]")
+
+pwf8.2 = plot_ordination(AN_All_n_f, ord_All_wf, type="sample",color ="Group_Designation", title="Unifrac Weighted PCoA for All Samples") +              theme(legend.title = element_blank(), legend.position = "bottom") + geom_point(size = 3) + theme(panel.background = element_blank(), strip.background = element_rect(fill = "white"), plot.title = element_text(face = "bold", hjust = 0.5), plot.caption = element_text(hjust = 0.5), legend.title = element_blank())
+
+lay <- rbind(c(1,1),
+             c(3,2))
+
+grid.arrange(pwf8.2,p8.1,p8,ncol = 2, nrow = 2, layout_matrix = lay, bottom = text_grob("O = Old (22 Months) R = Old (22 Months) +Rapamycin Y = Young (6 Months)   ns = p > 0.05 * = p <= 0.05 ** = p <= 0.01 *** = p <= 0.001 **** = p <= 0.0001",hjust = 0.5, size = 6))
+```
+
